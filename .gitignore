@@ -4,3 +4,6 @@ TEST-checkpoint.ipynb
 test.py
 notes.md
 data/
+chroma_*
+chroma
+.DS_Store
