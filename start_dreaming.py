@@ -1,5 +1,4 @@
 import argparse
-import random
 
 from langchain.prompts import ChatPromptTemplate
 from langchain_community.vectorstores import Chroma
@@ -9,80 +8,68 @@ CHROMA_PATH = "chroma"
 
 INITIAL_PROMPT_TEMPLATE = """
 Based on the following context, generate a descriptive environment for the beginning of a narrative:
-
-
 {context}
 
 Remember:
-The user reading this is the protagonist, so address them directly, as if they are witnessing it.
-You should keep the narrative short but informative about the scene, no more than 100 words.
+- The user reading this is the protagonist, so address them directly, as if they are witnessing it.
 ---
 
 Description:
 """
 
-ROLEPLAY_PROMPT_TEMPLATE = """
-What do you do next?
+CONTINUATION_PROMPT_TEMPLATE = """
+Continue the narrative focusing on the immediate next action and the current scene.
+- Keep the narrative short but informative about the scene, no more than 100 words.
+- Avoid using concluding phrases or wrapping up the story
+- Be creative and imaginative. Feel free to introduce new elements and unexpected twists
+- Avoid controlling the user actions, just control the setup or character.
+- Introduce new elements and unexpected twists to make the narrative more engaging.
 """
 
 def start_dreaming():
-    # Prepare the DB.
-    embedding_function = OpenAIEmbeddings()
-    db = Chroma(persist_directory=CHROMA_PATH, embedding_function=embedding_function)
-
-    # Fetch some data for the simulation using a broad query.
-    broad_query = "general context"  # This should be broad enough to retrieve multiple documents.
-    results = db.similarity_search_with_relevance_scores(broad_query, k=5)
-    if len(results) == 0:
-        print("No data available in the database to start dreaming.")
+    dream_description = input("What do you want to dream today? ").strip()
+    if not dream_description:
+        print("No dream content provided. Cannot start dreaming.")
         return
+    start_narrative(dream_description)
 
-    # Randomly select a few documents to use as initial context.
-    initial_docs = random.sample(results, min(len(results), 1))
-    context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in initial_docs])
-
-    # Start the narrative.
-    start_narrative(context_text)
 
 def start_narrative(context):
-    # Create a descriptive environment setup using the context.
     model = ChatOpenAI()
     prompt_template = ChatPromptTemplate.from_template(INITIAL_PROMPT_TEMPLATE)
     prompt = prompt_template.format(context=context)
     description = model.invoke(prompt).content.strip()
-
-    # Print the initial description to the user.
     print(f"Human:\nYou open your eyes, this is the first thing that you see...\n\n{description}\n")
+    continue_narrative(prompt, context)
 
-    # Continue with the roleplay.
-    continue_narrative(prompt)
 
-def continue_narrative(prompt):
+def fetch_related_data(context):
+    embedding_function = OpenAIEmbeddings()
+    db = Chroma(persist_directory=CHROMA_PATH, embedding_function=embedding_function)
+    results = db.similarity_search_with_relevance_scores(context, k=1)
+    return results
+
+
+def continue_narrative(prompt, context):
     model = ChatOpenAI()
+    related_data = fetch_related_data(context)
+    related_context = "\n\n".join([doc.page_content for doc, _score in related_data])
 
     while True:
-        # Get user input for the next action.
-        user_input = input("Your action: ").strip().lower()
-        
-        if user_input == "wake up":
+        user_action = input("Your action: ").strip().lower()
+        if user_action == "wake up":
             print("You woke up...")
             break
-        
-        # Generate the next part of the narrative.
-        new_prompt = f"{prompt}\nUser action: {user_input}\nNarrative continuation: "
-        response_text = model.invoke(new_prompt).content
+        new_prompt = f"{prompt}\nUser action: {user_action}\n\n{CONTINUATION_PROMPT_TEMPLATE}\nRelated context: {related_context}\nNarrative continuation: "
+        response_text = model.invoke(new_prompt).content.strip()
         print(f"\n\n{response_text}")
-
-        # Update the prompt with the new user action and model response.
-        prompt = f"{prompt}\nUser action: {user_input}\nNarrative continuation: {response_text}"
+        prompt = f"{prompt}\nUser action: {user_action}\n\nNarrative continuation: {response_text}"
 
 def main():
-    # Create CLI.
     parser = argparse.ArgumentParser()
     parser.add_argument("command", type=str, help="The command to execute.")
     args = parser.parse_args()
     command = args.command.lower()
-
     if command == "start dreaming":
         start_dreaming()
     elif command == "wake up":
@@ -90,6 +77,6 @@ def main():
     else:
         print("Unknown command. Please use 'start dreaming' or 'wake up'.")
 
+
 if __name__ == "__main__":
     main()
-
