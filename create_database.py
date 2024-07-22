@@ -1,8 +1,8 @@
 import os
 import shutil
-from dotenv import load_dotenv
 
 import openai
+from dotenv import load_dotenv
 from langchain.schema import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import DirectoryLoader
@@ -77,11 +77,11 @@ def split_text(documents: list[Document]) -> list[Document]:
 
     print(f"Split {len(documents)} documents into {len(chunks)} chunks.")
 
-    # For debugging purposes: print a sample chunk
-    if chunks:
-        document = chunks[10] if len(chunks) > 10 else chunks[0]
-        print(document.page_content)
-        print(document.metadata)
+    # # For debugging purposes: print a sample chunk
+    # if chunks:
+    #    document = chunks[10] if len(chunks) > 10 else chunks[0]
+    #    print(document.page_content)
+    #    print(document.metadata)
 
     return chunks
 
@@ -98,10 +98,9 @@ def save_to_chroma(chunks: list[Document]):
         shutil.rmtree(CHROMA_PATH)
 
     # Create a new DB from the documents.
-    db = Chroma.from_documents(
-        chunks, OpenAIEmbeddings(), persist_directory=CHROMA_PATH
-    )
-    db.persist()
+    Chroma.from_documents(chunks,
+                          OpenAIEmbeddings(),
+                          persist_directory=CHROMA_PATH)
     print(f"Saved {len(chunks)} chunks to {CHROMA_PATH}.")
 
 
