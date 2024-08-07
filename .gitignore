@@ -7,3 +7,5 @@ data/
 chroma_*
 chroma
 .DS_Store
+.streamlit/
+.aws/
