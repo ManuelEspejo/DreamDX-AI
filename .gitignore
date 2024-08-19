@@ -2,10 +2,11 @@
 TEST.ipynb
 TEST-checkpoint.ipynb
 test.py
-notes.md
 data/
 chroma_*
 chroma
 .DS_Store
 .streamlit/
 .aws/
+__pycache__/
+.ipynb_checkpoints/
