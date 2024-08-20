@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 
-load_dotenv()
+load_dotenv(dotenv_path="config/.env")
 
 # Load the API base URL from environment variables
 API_BASE_URL = os.getenv("API_BASE_URL")
