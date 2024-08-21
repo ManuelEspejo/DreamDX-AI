@@ -15,7 +15,7 @@ from datetime import datetime
 
 import streamlit as st
 
-from src.backend.api import continue_narrative, start_narrative, wake_up  # noqa: F401
+from api import continue_narrative, start_narrative, wake_up  # noqa: F401
 
 ### --- Page Configuration --- ###
 
@@ -70,6 +70,19 @@ def add_to_messages(role, action_type, content):
 
     st.session_state.messages.append(entry)
 
+def handle_assistant_response(response_data):
+    """
+    Handles the response from the assistant, updating the chat and session state.
+
+    Args:
+        response_data (dict): The response from the API containing the assistant's message.
+    """
+    if response_data:
+        with st.chat_message("assistant"):
+            st.markdown(response_data.get('description', 'Error in the response from the API'))
+        add_to_messages("assistant", "model_description", response_data.get('description', 'Error in the response from the API'))
+    
+    
 def handle_start_narrative(session_id, narrative_input):
     """
     Starts a new narrative by sending the user's input to the API
@@ -80,11 +93,8 @@ def handle_start_narrative(session_id, narrative_input):
         narrative_input (str): User input to start the narrative.
     """
     response_data = start_narrative(session_id, narrative_input)
-    if response_data:
-        with st.chat_message("assistant"):
-            st.markdown(response_data.get('description', 'Error in the response from the API'))
-        add_to_messages("assistant", "model_description", response_data.get('description', 'Error in the response from the API'))
-        st.session_state.narrative_started = True  # Narrative started
+    handle_assistant_response(response_data)
+    st.session_state.narrative_started = True  # Narrative started
 
 def handle_continue_narrative(narrative_input):
     """
@@ -94,10 +104,7 @@ def handle_continue_narrative(narrative_input):
         narrative_input (str): The input provided by the user to continue the narrative.
     """
     response_data = continue_narrative(st.session_state.session_id, narrative_input)
-    if response_data:
-        with st.chat_message("assistant"):
-            st.markdown(response_data.get('description', 'Error in the response from the API'))
-        add_to_messages("assistant", "model_description", response_data.get('description', 'Error in the response from the API'))
+    handle_assistant_response(response_data)
 
 def handle_wake_up():
     """
