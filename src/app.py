@@ -16,6 +16,7 @@ from datetime import datetime
 import streamlit as st
 
 from api import continue_narrative, start_narrative, wake_up  # noqa: F401
+from auth import confirm_user, login_user, register_user
 
 ### --- Page Configuration --- ###
 
@@ -25,30 +26,6 @@ st.set_page_config(
     page_icon=":new_moon_with_face:"
 )
 st.title("DreamDX AI")
-
-### --- Session States Initialization --- ###
-
-# Session identifier
-if 'session_id' not in st.session_state:
-    st.session_state.session_id = ""
-# Initialize chat history
-if 'messages' not in st.session_state:
-    st.session_state.messages = []
-# Narrative started flag
-if 'narrative_started' not in st.session_state:
-    st.session_state.narrative_started = False  # Check if narrative is started
-
-# Only show the input field for the narrative name if the narrative hasn't started
-if not st.session_state.narrative_started:
-    session_id = st.text_input('Dream narrative Name',
-                               placeholder='Narrative Name',
-                               value=st.session_state.session_id)
-    
-    # Update session_id in session state if the user changes the input
-    if session_id != st.session_state.session_id:
-        st.session_state.session_id = session_id
-else:
-    st.write(f"**Narrative Name:** {st.session_state.session_id}")
 
 ### --- Helper Functions --- ###
 
@@ -69,6 +46,7 @@ def add_to_messages(role, action_type, content):
     }
 
     st.session_state.messages.append(entry)
+
 
 def handle_assistant_response(response_data):
     """
@@ -96,6 +74,7 @@ def handle_start_narrative(session_id, narrative_input):
     handle_assistant_response(response_data)
     st.session_state.narrative_started = True  # Narrative started
 
+
 def handle_continue_narrative(narrative_input):
     """
     Continues an existing narrative by sending the user's input to the API.
@@ -105,6 +84,7 @@ def handle_continue_narrative(narrative_input):
     """
     response_data = continue_narrative(st.session_state.session_id, narrative_input)
     handle_assistant_response(response_data)
+
 
 def handle_wake_up():
     """
@@ -119,40 +99,104 @@ def handle_wake_up():
     st.session_state.narrative_started = False
     st.rerun()
 
-### --- Main Logic --- ###
 
-# Display chat messages from history on app rerun
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+### --- Session States Initialization --- ###
 
-# Verify if session ID has been set
-if st.session_state.session_id:
-    # Accept user input
-    if prompt := st.chat_input("Type to dream"):
-        # Add user message to chat history
+# Session identifier and access token
+if 'session_id' not in st.session_state:
+    st.session_state.session_id = ""
+    
+if 'access_token' not in st.session_state:
+    st.session_state.access_token = None
+
+# Initialize chat history
+if 'messages' not in st.session_state:
+    st.session_state.messages = []
+    
+# Narrative started flag
+if 'narrative_started' not in st.session_state:
+    st.session_state.narrative_started = False  # Check if narrative is started
+    
+### --- Authentication logic --- ###
+
+if st.session_state.access_token:
+    st.write("Welcome, you are logged in!")
+    
+    
+    # Only show the input field for the narrative name if the narrative hasn't started
+    if not st.session_state.narrative_started:
+        session_id = st.text_input('Dream narrative Name',
+                                placeholder='Narrative Name',
+                                value=st.session_state.session_id)
         
-        with st.chat_message("user"):
-            st.markdown(prompt)
-        # Start or continue narrative as appropriate
-        if not st.session_state.narrative_started:
-            handle_start_narrative(st.session_state.session_id, prompt)
-            add_to_messages("user", "dream_description", prompt)
-        else:
-            handle_continue_narrative(prompt)
-            add_to_messages("user", "user_action", prompt)
+        # Update session_id in session state if the user changes the input
+        if session_id != st.session_state.session_id:
+            st.session_state.session_id = session_id
+    else:
+        st.write(f"**Narrative Name:** {st.session_state.session_id}")
 
-    # Wake up button
-    if st.button("Wake up"):
-        handle_wake_up()
-        # TODO: Include flow to save dream narrative if user wants to
 
+    # Display chat messages from history on app rerun
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+
+    # Verify if session ID has been set
+    if st.session_state.session_id:
+        # Accept user input
+        if prompt := st.chat_input("Type to dream"):
+            with st.chat_message("user"):
+                st.markdown(prompt)
+            # Start or continue narrative as appropriate
+            if not st.session_state.narrative_started:
+                handle_start_narrative(st.session_state.session_id, prompt)
+                add_to_messages("user", "dream_description", prompt)
+            else:
+                handle_continue_narrative(prompt)
+                add_to_messages("user", "user_action", prompt)
+
+
+        # Wake up button
+        if st.button("Wake up"):
+            handle_wake_up()
+            # TODO: Include flow to save dream narrative if user wants to
+
+    else:
+        st.write("Enter a title for your dream narrative.")
 else:
-    st.write("Enter a title for your dream narrative.")
+    # The user is not authenticated; show the login and registration forms
+    st.title("Login to DreamDX AI")
+    
+    # Login Form
+    login_email = st.text_input("Email", placeholder="Enter your email")
+    login_password = st.text_input("Password", placeholder="Enter your password", type="password")
+    
+    if st.button("Login"):
+        token = login_user(login_email, login_password)
+        if token:
+            st.session_state.access_token = token
+            st.rerun()  # Rerun the script to update the UI for logged-in state
 
+    st.write("----")
+    st.title("Register for DreamDX AI")
+    
+    # Registration Form
+    reg_email = st.text_input("Registration Email", placeholder="Enter your registration email")
+    reg_password = st.text_input("Registration Password", placeholder="Enter your registration password", type="password")
+    reg_name = st.text_input("Your Name", placeholder="Enter your name")
+    
+    if st.button("Register"):
+        register_user(reg_email, reg_password, reg_name)
+
+    st.write("----")
+    st.title("Confirm Your Registration")
+
+    confirm_email = st.text_input("Confirmation Email", placeholder="Enter your email for confirmation")
+    confirm_code = st.text_input("Confirmation Code", placeholder="Enter the code you received via email")
+
+    if st.button("Confirm Registration"):
+        confirm_user(confirm_email, confirm_code)
 
 #! Debug
-st.write(st.session_state)
-
-
-
+# st.write(st.session_state)
