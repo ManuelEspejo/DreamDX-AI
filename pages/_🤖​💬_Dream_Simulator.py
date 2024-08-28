@@ -15,9 +15,13 @@ from datetime import datetime
 
 import streamlit as st
 
+import components.auth as auth  # noqa: F401
 from components.api import continue_narrative, start_narrative, wake_up  # noqa: F401
 
 ### --- Page Configuration --- ###
+
+# Check authentication
+auth.set_st_state_vars()
 
 # Set up page configuration and title
 st.set_page_config(
@@ -26,6 +30,12 @@ st.set_page_config(
 )
 st.markdown("# Dream Simulator Demo")
 st.sidebar.header("Dream Simulator Demo")
+
+# Add login/logout button
+if st.session_state["authenticated"]:
+    auth.button_logout()
+else:
+    auth.button_login()
 
 ### --- Helper Functions --- ###
 
@@ -115,48 +125,54 @@ if 'narrative_started' not in st.session_state:
     st.session_state.narrative_started = False  # Check if narrative is started
 
 ### --- Main App --- ###
-    
-# Only show the input field for the narrative name if the narrative hasn't started
-if not st.session_state.narrative_started:
-    session_id = st.text_input('Dream narrative Name',
-                            placeholder='Narrative Name',
-                            value=st.session_state.session_id)
-    
-    # Update session_id in session state if the user changes the input
-    if session_id != st.session_state.session_id:
-        st.session_state.session_id = session_id
+
+# Only show the page content if the user is authenticated
+if st.session_state.authenticated:
+    # Only show the input field for the narrative name if the narrative hasn't started
+    if not st.session_state.narrative_started:
+        session_id = st.text_input('Dream narrative Name',
+                                placeholder='Narrative Name',
+                                value=st.session_state.session_id)
+        
+        # Update session_id in session state if the user changes the input
+        if session_id != st.session_state.session_id:
+            st.session_state.session_id = session_id
+    else:
+        st.write(f"**Narrative Name:** {st.session_state.session_id}")
+
+
+    # Display chat messages from history on app rerun
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+
+    # Verify if session ID has been set
+    if st.session_state.session_id:
+        # Accept user input
+        if prompt := st.chat_input("Type to dream"):
+            with st.chat_message("user"):
+                st.markdown(prompt)
+            # Start or continue narrative as appropriate
+            if not st.session_state.narrative_started:
+                add_to_messages("user", "dream_description", prompt)
+                handle_start_narrative(st.session_state.session_id, prompt)
+            else:
+                add_to_messages("user", "user_action", prompt)
+                handle_continue_narrative(prompt)
+                
+
+
+        # Wake up button
+        if st.button("Wake up"):
+            handle_wake_up()
+            # TODO: Include flow to save dream narrative if user wants to
+
+    else:
+        st.write("Enter a title for your dream narrative.")
+        
 else:
-    st.write(f"**Narrative Name:** {st.session_state.session_id}")
-
-
-# Display chat messages from history on app rerun
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-
-
-# Verify if session ID has been set
-if st.session_state.session_id:
-    # Accept user input
-    if prompt := st.chat_input("Type to dream"):
-        with st.chat_message("user"):
-            st.markdown(prompt)
-        # Start or continue narrative as appropriate
-        if not st.session_state.narrative_started:
-            handle_start_narrative(st.session_state.session_id, prompt)
-            add_to_messages("user", "dream_description", prompt)
-        else:
-            handle_continue_narrative(prompt)
-            add_to_messages("user", "user_action", prompt)
-
-
-    # Wake up button
-    if st.button("Wake up"):
-        handle_wake_up()
-        # TODO: Include flow to save dream narrative if user wants to
-
-else:
-    st.write("Enter a title for your dream narrative.")
+    st.write("Login to continue.")
 
 #! Debug
-# st.write(st.session_state)
+#st.write(st.session_state)
