@@ -16,26 +16,36 @@ from datetime import datetime
 import streamlit as st
 
 import components.auth as auth  # noqa: F401
-from components.api import continue_narrative, start_narrative, wake_up  # noqa: F401
+from components.api import (  # noqa: F401
+    continue_narrative,
+    get_user_narratives,
+    start_narrative,
+    wake_up,
+)
 
 ### --- Page Configuration --- ###
-
-# Check authentication
-auth.set_st_state_vars()
 
 # Set up page configuration and title
 st.set_page_config(
     page_title="Dream Simulator",
     page_icon="🤖​💬​"
 )
-st.markdown("# Dream Simulator Demo")
-st.sidebar.header("Dream Simulator Demo")
+st.markdown("# 🤖​💬 Dream Simulator")
+st.sidebar.header("Dream Simulator")
+
+# Check authentication
+if not st.session_state.get("authenticated", False):
+    auth.set_st_state_vars()
 
 # Add login/logout button
-if st.session_state["authenticated"]:
+if st.session_state.get("authenticated", False):
     auth.button_logout()
 else:
     auth.button_login()
+    st.stop()  # Stop execution if not authenticated
+
+# Get user id (user email)
+user_id = st.session_state.get("user_email", "")
 
 ### --- Helper Functions --- ###
 
@@ -71,28 +81,31 @@ def handle_assistant_response(response_data):
         add_to_messages("assistant", "model_description", response_data.get('description', 'Error in the response from the API'))
     
     
-def handle_start_narrative(session_id, narrative_input):
+def handle_start_narrative(user_id, session_id, narrative_input):
     """
     Starts a new narrative by sending the user's input to the API
     and updating the state of the session.
 
     Args:
+        user_id (str): The ID of the user (email).
         session_id (str): Current session identifier.
         narrative_input (str): User input to start the narrative.
     """
-    response_data = start_narrative(session_id, narrative_input)
+    response_data = start_narrative(user_id, session_id, narrative_input)
     handle_assistant_response(response_data)
     st.session_state.narrative_started = True  # Narrative started
 
 
-def handle_continue_narrative(narrative_input):
+def handle_continue_narrative(user_id, session_id, narrative_input):
     """
     Continues an existing narrative by sending the user's input to the API.
 
     Args:
+        user_id (str): The ID of the user (email).
+        session_id (str): The ID of the current session.
         narrative_input (str): The input provided by the user to continue the narrative.
     """
-    response_data = continue_narrative(st.session_state.session_id, narrative_input)
+    response_data = continue_narrative(user_id, session_id, narrative_input)
     handle_assistant_response(response_data)
 
 
@@ -100,7 +113,7 @@ def handle_wake_up():
     """
     Ends the narrative by sending a 'wake up' command to the API and resets the session state.
     """
-    response_data = wake_up(st.session_state.session_id)
+    response_data = wake_up()
     if response_data:
         add_to_messages('assistant', 'model_description', response_data.get('message', 'Woke up'))
     # Reset session state
@@ -109,6 +122,34 @@ def handle_wake_up():
     st.session_state.narrative_started = False
     st.rerun()
 
+
+def is_valid_session_id(user_id, session_id):
+    """
+    Checks if the given session_id is valid (not already registered in DynamoDB).
+    
+    Args:
+        user_id (str): The ID of the user (email).
+        session_id (str): The session ID to check.
+    
+    Returns:
+        bool: True if the session_id is valid, False otherwise.
+    """
+    existing_narratives = get_user_narratives(user_id)
+    return not any(narrative['session_id'] == session_id for narrative in existing_narratives)
+
+def is_existing_narrative(user_id, session_id):
+    """
+    Checks if the given session_id already exists for the user.
+    
+    Args:
+        user_id (str): The ID of the user (email).
+        session_id (str): The session ID to check.
+    
+    Returns:
+        bool: True if the narrative exists, False otherwise.
+    """
+    existing_narratives = get_user_narratives(user_id)
+    return any(narrative['session_id'] == session_id for narrative in existing_narratives)
 
 ### --- Session States Initialization --- ###
 
@@ -126,53 +167,57 @@ if 'narrative_started' not in st.session_state:
 
 ### --- Main App --- ###
 
-# Only show the page content if the user is authenticated
-if st.session_state.authenticated:
-    # Only show the input field for the narrative name if the narrative hasn't started
+if st.session_state.get("authenticated", False):
+    # Only show the page content if the user is authenticated
     if not st.session_state.narrative_started:
         session_id = st.text_input('Dream narrative Name',
-                                placeholder='Narrative Name',
-                                value=st.session_state.session_id)
+                                   placeholder='Narrative Name',
+                                   value=st.session_state.session_id)
         
         # Update session_id in session state if the user changes the input
         if session_id != st.session_state.session_id:
             st.session_state.session_id = session_id
+            st.session_state.narrative_started = False
+        
+        # Check if the session_id is valid
+        if session_id:
+            if is_existing_narrative(user_id, session_id):
+                st.warning("Narrative already exists. Choose a new name to start a new dream.")
+            else:
+                st.success("You can start your dream now.")
+                st.session_state.narrative_started = True
     else:
         st.write(f"**Narrative Name:** {st.session_state.session_id}")
-
 
     # Display chat messages from history on app rerun
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-
-    # Verify if session ID has been set
-    if st.session_state.session_id:
+    # Show chat input if a valid session_id is set and narrative is started
+    if st.session_state.session_id and st.session_state.narrative_started:
         # Accept user input
         if prompt := st.chat_input("Type to dream"):
             with st.chat_message("user"):
                 st.markdown(prompt)
             # Start or continue narrative as appropriate
-            if not st.session_state.narrative_started:
+            if len(st.session_state.messages) == 0:
                 add_to_messages("user", "dream_description", prompt)
-                handle_start_narrative(st.session_state.session_id, prompt)
+                handle_start_narrative(user_id, st.session_state.session_id, prompt)
             else:
                 add_to_messages("user", "user_action", prompt)
-                handle_continue_narrative(prompt)
-                
-
+                handle_continue_narrative(user_id, st.session_state.session_id, prompt)
 
         # Wake up button
         if st.button("Wake up"):
             handle_wake_up()
             # TODO: Include flow to save dream narrative if user wants to
 
-    else:
+    elif not st.session_state.session_id:
         st.write("Enter a title for your dream narrative.")
         
 else:
-    st.write("Login to continue.")
+    st.write("Please log in to use the Dream Simulator.")
 
 #! Debug
-#st.write(st.session_state)
+st.write(st.session_state)
