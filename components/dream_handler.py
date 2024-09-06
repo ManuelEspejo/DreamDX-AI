@@ -15,6 +15,7 @@ for later retrieval.
 import json
 import time
 from datetime import datetime
+from decimal import Decimal
 
 import boto3
 from boto3.dynamodb.conditions import Attr, Key
@@ -51,13 +52,24 @@ model = ChatOpenAI(model="gpt-4o-mini")
 dynamodb = boto3.resource('dynamodb')
 narrative_table = dynamodb.Table('dreamdx-narratives')  # Replace with actual table name
 
+def decimal_default(obj):
+    """
+    Custom JSON encoder to handle Decimal objects.
+    
+    Necessary because DynamoDB returns Decimal objects
+    that cannot be directly serialized by json.dumps
+    """
+    if isinstance(obj, Decimal):
+        return float(obj)
+    raise TypeError
 
 def start_narrative(user_id, session_id, context):
     """
     Initiates a new narrative session in DynamoDB.
 
-    - Generates a descriptive environment based on the provided context.
-    - Stores the generated narrative in DynamoDB with the session ID and a timestamp.
+    - Checks if a narrative already exists for the given session ID.
+    - If it doesn't exist, generates a descriptive environment and stores it.
+    - If it exists, returns a warning message.
     
     Args:
     user_id (str): Unique identifier for the user (user email).
@@ -65,8 +77,17 @@ def start_narrative(user_id, session_id, context):
     context (str): Context to seed the narrative generation.
 
     Returns:
-    dict: The stored narrative item.
+    dict: The stored narrative item or a warning message.
     """
+    # Check if a narrative already exists for the given session ID
+    existing_session = narrative_table.get_item(
+        Key={'user_id': user_id, 'session_id': session_id}
+        ).get('Item')
+    
+    if existing_session:
+        return {
+            "error": "Narrative already exists for the given session ID. Please use a new dream name."
+            }
     timestamp = int(time.time())  # Current timestamp for record keeping
     date = datetime.now().strftime("%Y-%m-%d")
 
@@ -180,7 +201,6 @@ def delete_narrative(user_id, session_id):
     return {"message": f"Successfully deleted narrative session {session_id} for user {user_id}"}
 
 
-
 def get_user_narratives(user_id):
     """
     Retrieves all active narratives for a given user from DynamoDB.
@@ -195,8 +215,10 @@ def get_user_narratives(user_id):
         KeyConditionExpression=Key('user_id').eq(user_id),
         FilterExpression=Attr('is_deleted').eq(False)
     )
-    return response.get('Items', [])
-
+    items = response.get('Items', [])
+    
+    # Convert items to JSON-serializable format
+    return json.loads(json.dumps(items, default=decimal_default))
 
 
 def lambda_handler(event, context):
@@ -252,5 +274,5 @@ def lambda_handler(event, context):
     # Return the result as a JSON response
     return {
         'statusCode': 200,
-        'body': json.dumps(result)
+        'body': json.dumps(result, default=decimal_default)
     }
