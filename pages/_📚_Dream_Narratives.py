@@ -10,7 +10,7 @@ import pandas as pd
 import streamlit as st
 
 from components import auth
-from components.api import delete_narrative, get_user_narratives
+from components.api import delete_narrative, get_narrative_content, get_user_narratives
 
 ### --- Page Configuration --- ###
 
@@ -25,6 +25,8 @@ if not st.session_state.get("authenticated", False):
 # Manage mode
 if 'manage_mode' not in st.session_state:
     st.session_state.manage_mode = False
+if 'manage_action' not in st.session_state:
+    st.session_state.manage_action = None
 if 'delete_stage' not in st.session_state:
     st.session_state.delete_stage = 0
 if 'selected_narratives' not in st.session_state:
@@ -66,9 +68,13 @@ def get_narratives_dataframe(user_id):
 
 def toggle_manage_mode():
     st.session_state.manage_mode = not st.session_state.manage_mode
+    st.session_state.manage_action = None
     st.session_state.delete_stage = 0
     st.session_state.selected_narratives = []
     st.session_state.deletion_performed = False
+
+def set_manage_action(action):
+    st.session_state.manage_action = action
 
 def set_delete_stage(stage):
     st.session_state.delete_stage = stage
@@ -77,21 +83,72 @@ def update_selected_narratives():
     st.session_state.selected_narratives = st.session_state.multiselect_narratives
 
 def manage_narratives(df, user_id):
-    st.write("Select narratives to manage:")
+    if st.session_state.manage_action is None:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.button("View narratives", on_click=set_manage_action, args=('view',))
+        with col2:
+            st.button("Delete narratives", on_click=set_manage_action, args=('delete',))
+    elif st.session_state.manage_action == 'view':
+        view_narratives(df, user_id)
+    elif st.session_state.manage_action == 'delete':
+        delete_narratives(df, user_id)
+
+def view_narratives(df, user_id):
+    selected_narrative = st.selectbox(
+        "Select a narrative to view:",
+        options=df['Narrative Name'].tolist(),
+        format_func=lambda x: x
+    )
+    
+    if selected_narrative:
+        st.session_state.viewing_narrative = True
+        st.subheader(f"🔍 Viewing: {selected_narrative}")
+        
+        # Retrieve the narrative content
+        narrative_content = get_narrative_content(user_id, selected_narrative)
+        
+        if narrative_content and 'descriptions' in narrative_content and 'actions' in narrative_content:
+            descriptions = narrative_content['descriptions']
+            actions = narrative_content['actions']
+            
+            # Display the first description (initial model output)
+            if descriptions:
+                st.markdown("### 🤖 Dream Begins")
+                st.write(descriptions[0])
+            
+            # Alternate between actions and subsequent descriptions
+            for i in range(min(len(actions), len(descriptions) - 1)):
+                st.markdown("---")
+                
+                # User action
+                st.markdown("### 👤 Your Action")
+                st.info(actions[i])
+                
+                # Model response
+                st.markdown("### 🤖 Dream Continues")
+                st.write(descriptions[i + 1])
+            
+            # If there are more descriptions than actions, show the last one
+            if len(descriptions) > len(actions) + 1:
+                st.markdown("---")
+                st.markdown("### 🤖 Final Dream State")
+                st.write(descriptions[-1])
+                
+        else:
+            st.error("Failed to retrieve narrative content or content is incomplete.")
+            st.write("Narrative content structure:", narrative_content)
+
+def delete_narratives(df, user_id):
     st.multiselect(
-        "Select narratives",
+        "Select narratives to delete:",
         options=df['Narrative Name'].tolist(),
         key="multiselect_narratives",
         on_change=update_selected_narratives
     )
 
     if st.session_state.selected_narratives:
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("View Narrative"):
-                st.info("View Narrative functionality not implemented yet.")
-        with col2:
-            handle_deletion(user_id)
+        handle_deletion(user_id)
 
 def handle_deletion(user_id):
     if st.session_state.delete_stage == 0:
@@ -116,26 +173,20 @@ def perform_deletion(selected_narratives, user_id):
     deleted_narratives = []
     st.write("Deleting narratives...")
     for narrative in selected_narratives:
-        try:
-            result = delete_narrative(user_id, narrative)
-            if result:
-                if 'error' in result and 'No items found' in result['error']:
-                    # This likely means the narrative was successfully deleted
-                    deleted_narratives.append(narrative)
-                    st.success(f"Successfully deleted narrative: {narrative}")
-                elif 'message' in result and 'Successfully deleted narrative' in result['message']:
-                    deleted_narratives.append(narrative)
-                    st.success(f"Successfully deleted narrative: {narrative}")
-                    st.rerun()
-                else:
-                    st.error(f"Unexpected response when deleting narrative '{narrative}'. Response: {result}")
+        result = delete_narrative(user_id, narrative)
+        if result:
+            if ('error' in result and 'No items found' in result['error']) or \
+               ('message' in result and 'Successfully deleted narrative' in result['message']):
+                deleted_narratives.append(narrative)
+                st.success(f"Successfully deleted narrative: {narrative}")
             else:
-                st.error(f"Failed to delete narrative '{narrative}'. No response received.")
-        except Exception as e:
-            st.error(f"An error occurred while deleting narrative '{narrative}': {str(e)}")
+                st.error(f"Unexpected response when deleting narrative '{narrative}'. Response: {result}")
+        else:
+            st.error(f"Failed to delete narrative '{narrative}'. No response received.")
     
     if deleted_narratives:
         st.success(f"Successfully deleted {len(deleted_narratives)} narrative(s).")
+
     else:
         st.warning("No narratives were deleted.")
 
