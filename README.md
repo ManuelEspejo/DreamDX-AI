@@ -77,9 +77,9 @@ Imagine stepping back into a dream, but this time with full awareness and contro
 #### Data Management
 
 - [x] ~~**Basic DynamoDB Integration**: Implement initial DynamoDB setup to store and manage dream sessions.~~
-- [x] **Implementation of the authentication system**: Develop the authentication system using AWS Cognito to manage unique user session records.
-- [ ] **Enhanced session management**: Implement improvements in the handling of generated narratives and user sessions.
-- [ ] **Past Dream Database**: Implement a database for users to store past dreams data.
+- [x] ~~**Implementation of the authentication system**: Develop the authentication system using AWS Cognito to manage unique user session records.~~
+- [x] ~~**Enhanced session management**: Implement improvements in the handling of generated narratives and user sessions.~~
+- [x] ~~**Past Dream Database**: Implement a database for users to store past dreams data.~~
 - [ ] **Data Upload Feature**: Implement the ability for users to upload dreams directly from text files (e.g., .txt or .md), making it easier for them to integrate past dreams into the simulation.
 
 ### Upcoming Features
