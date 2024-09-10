@@ -73,14 +73,17 @@ def handle_assistant_response(response_data):
     Handles the response from the assistant, updating the chat and session state.
 
     Args:
-        response_data (dict): The response from the API containing the assistant's message.
+        response_data (dict): The response from the API containing the assistant's messages.
     """
-    if response_data:
-        with st.chat_message("assistant"):
-            st.markdown(response_data.get('description', 'Error in the response from the API'))
-        add_to_messages("assistant", "model_description", response_data.get('description', 'Error in the response from the API'))
-    
-    
+    if response_data and 'descriptions' in response_data:
+        for description in response_data['descriptions']:
+            with st.chat_message("assistant"):
+                st.markdown(description)
+            add_to_messages("assistant", "model_description", description)
+    elif response_data:
+        st.error("Error: 'descriptions' not found in the response from the API")
+
+
 def handle_start_narrative(user_id, session_id, narrative_input):
     """
     Starts a new narrative by sending the user's input to the API
@@ -220,4 +223,4 @@ else:
     st.write("Please log in to use the Dream Simulator.")
 
 #! Debug
-st.write(st.session_state)
+# st.write(st.session_state)
