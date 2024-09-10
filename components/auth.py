@@ -17,6 +17,7 @@ Refereces:
 import base64 # noqa
 import json # noqa
 import os
+import jwt
 
 import requests # noqa
 import streamlit as st
@@ -29,6 +30,23 @@ CLIENT_ID = os.environ.get("CLIENT_ID")
 CLIENT_SECRET = os.environ.get("CLIENT_SECRET")
 APP_URI = os.environ.get("APP_URI")
 
+def decode_id_token(id_token):
+    """
+    Decodes the ID token and returns the user's information.
+
+    Args:
+        id_token (str): The ID token to decode.
+
+    Returns:
+        dict: The user's information.
+    """
+    try:
+        decoded_token = jwt.decode(id_token, options={"verify_signature": False})
+        return decoded_token
+    except Exception as e:
+        st.error(f"Error decoding ID token: {e}")
+        return None 
+
 def initialise_st_state_vars():
     """
     Initializes the session state variables.
@@ -37,7 +55,8 @@ def initialise_st_state_vars():
         st.session_state["auth_code"] = ""
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
-    
+    if "user_email" not in st.session_state:
+        st.session_state["user_email"] = ""
 
 def get_auth_code():
     """
@@ -122,14 +141,28 @@ def set_st_state_vars():
     Sets the session state variables after authentication.
     """
     initialise_st_state_vars()
-    auth_code = get_auth_code()
-    access_token, id_token = get_user_token(auth_code)
     
-    if access_token != "":
-        st.session_state["auth_code"] = auth_code
-        st.session_state["authenticated"] = True
+    if not st.session_state["authenticated"]:
+        auth_code = get_auth_code()
+        access_token, id_token = get_user_token(auth_code)
+        
+        if access_token != "":
+            st.session_state["auth_code"] = auth_code
+            st.session_state["authenticated"] = True
+            
+            # Decode the ID token and extract user information
+            user_info = decode_id_token(id_token)
+            if user_info and 'email' in user_info:
+                st.session_state["user_email"] = user_info['email']
+            else:
+                st.warning("Unable to retrieve user email from the ID token.")
+        else:
+            st.session_state["authenticated"] = False
+            st.session_state["user_email"] = ""
 
-
+    # Debug: Print session state
+    st.write("Debug - Session State:", st.session_state)
+    
 ### --- Login/logout components --- ###
 
 login_link = f"{COGNITO_DOMAIN}/login?client_id={CLIENT_ID}&response_type=code&scope=email+openid&redirect_uri={APP_URI}"
