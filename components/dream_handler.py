@@ -89,7 +89,7 @@ def start_narrative(user_id, session_id, context):
             "error": "Narrative already exists for the given session ID. Please use a new dream name."
             }
     timestamp = int(time.time())  # Current timestamp for record keeping
-    date = datetime.now().strftime("%Y-%m-%d")
+    date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     # Create and format the prompt using the initial template
     prompt_template = ChatPromptTemplate.from_template(INITIAL_PROMPT_TEMPLATE)
@@ -103,7 +103,7 @@ def start_narrative(user_id, session_id, context):
         'timestamp': timestamp,
         'date': date,
         'prompt': prompt,
-        'description': f"You open your eyes, this is the first thing that you see...\n\n{description}\n",
+        'descriptions': [f"You open your eyes, this is the first thing that you see...\n\n{description}\n"],
         'actions': [],
         'is_deleted': False
     }
@@ -138,7 +138,7 @@ def continue_narrative(user_id, session_id, user_action):
 
     # Get the most recent narrative entry
     latest_item = max(response['Items'], key=lambda x: x['timestamp'])
-    previous_descriptions = " ".join([item['description'] for item in response['Items']])
+    previous_descriptions = " ".join(latest_item['descriptions'])
 
     # Create a new prompt with the latest user action and previous narrative
     new_prompt = f"{previous_descriptions}\nUser action: {user_action}\n\n{CONTINUATION_PROMPT_TEMPLATE}"
@@ -152,7 +152,7 @@ def continue_narrative(user_id, session_id, user_action):
         'timestamp': timestamp,
         'date': datetime.now().strftime("%Y-%m-%d"),
         'prompt': new_prompt,
-        'description': response_text,
+        'descriptions': latest_item.get('descriptions', []) + [response_text],
         'actions': latest_item.get('actions', []) + [user_action],
         'is_deleted': False
     }
@@ -221,12 +221,51 @@ def get_user_narratives(user_id):
     return json.loads(json.dumps(items, default=decimal_default))
 
 
+def get_narrative_content(user_id, session_id):
+    """
+    Retrieves the actions and descriptions of a specific narrative from DynamoDB.
+
+    Args:
+    user_id (str): Unique identifier for the user (user email).
+    session_id (str): Unique identifier for the session.
+
+    Returns:
+    dict: The narrative actions and descriptions, or an error message if not found.
+    """
+    # Query the table to get the item for the user and session
+    response = narrative_table.get_item(
+        Key={
+            'user_id': user_id,
+            'session_id': session_id
+        },
+        ProjectionExpression='actions, descriptions'
+    )
+
+    # Check if the item was found
+    if 'Item' not in response:
+        return {"error": "No item found for the given user_id and session_id."}
+
+    # Extract the actions and descriptions
+    actions = response['Item'].get('actions', [])
+    descriptions = response['Item'].get('descriptions', [])
+
+    # Prepare the content to return
+    content = {
+        'user_id': user_id,
+        'session_id': session_id,
+        'actions': actions,
+        'descriptions': descriptions
+    }
+
+    return content
+
+
 def lambda_handler(event, context):
     """
     Handles incoming Lambda events and routes commands to appropriate functions.
 
     - Supports 'start dreaming', 'continue narrative', 'wake up', 'get narratives',
-      and 'save narrative' commands.
+      'delete narrative', and 'get narrative content' commands.
     - Extracts command and parameters from the event and processes them accordingly.
     
     Args:
@@ -268,6 +307,8 @@ def lambda_handler(event, context):
         result = get_user_narratives(user_id)
     elif command == "delete narrative":
         result = delete_narrative(user_id, session_id)
+    elif command == "get narrative content":
+        result = get_narrative_content(user_id, session_id)
     else:
         result = {"error": "Unknown command or missing arguments."}
 
