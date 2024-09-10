@@ -58,24 +58,28 @@ def call_api(endpoint, payload, max_retries=3, backoff_factor=0.3):
     
     except requests.exceptions.HTTPError as http_err:
         # Handle specific HTTP errors
-        if 400 <= response.status_code < 500:
-            st.error(f"Client error: {response.status_code} - {response.reason}")
-        elif 500 <= response.status_code < 600:
-            st.error(f"Server error: {response.status_code} - {response.reason}")
-        else:
-            st.error(f"Unexpected HTTP error: {response.status_code} - {http_err}")
+        error_message = f"HTTP error occurred: {http_err}"
+        st.error(error_message)
+        st.error(f"Status code: {response.status_code}")
+        st.error(f"Response content: {response.text}")
+        
+        # Log additional request details
+        st.error(f"Request URL: {url}")
+        st.error(f"Request payload: {payload}")
+        st.error(f"Request headers: {response.request.headers}")
+        
         return None
     
-    except requests.exceptions.ConnectionError:
-        st.error("A connection error occurred. Please check your internet connection.")
+    except requests.exceptions.ConnectionError as conn_err:
+        st.error(f"Connection error occurred: {conn_err}")
         return None
     
-    except requests.exceptions.Timeout:
-        st.error("The request timed out. Please try again later.")
+    except requests.exceptions.Timeout as timeout_err:
+        st.error(f"Request timed out: {timeout_err}")
         return None
     
     except requests.exceptions.RequestException as req_err:
-        st.error(f"An unexpected error occurred: {str(req_err)}")
+        st.error(f"An unexpected error occurred: {req_err}")
         return None
 
 def start_narrative(user_id, session_id, narrative_input):
@@ -167,4 +171,24 @@ def delete_narrative(user_id, session_id):
         'session_id': session_id,
         'user_id': user_id
     }
+    return call_api(endpoint, payload)
+
+def get_narrative_content(user_id, session_id):
+    """
+    Retrieves the content of a specific narrative.
+
+    Args:
+        user_id (str): The ID of the user (email).
+        session_id (str): The ID of the narrative session.
+
+    Returns:
+        dict: The narrative content including prompts and descriptions.
+    """
+    endpoint = "/dev/narratives/get-content"
+    payload = {
+        "command": "get narrative content",
+        "user_id": user_id,
+        "session_id": session_id
+    }
+    
     return call_api(endpoint, payload)
